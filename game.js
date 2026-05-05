@@ -152,11 +152,11 @@ class IntroScene extends Phaser.Scene {
 
     create() {
         const lines = [
-            'IN THIS GAME THERE ARE ONLY THREE OPTIONS',
-            'RUN, JUMP, DUCK',
-            'YOU HAVE 2 SECONDS TO COMPLETE EACH COMMAND',
+            'THERE ARE ONLY THREE OPTIONS:',
+            'RUN, JUMP, DUCK.',
+            'COMPLETE EACH COMMAND.',
             "YOU THINK YOU'RE SO SMART?",
-            'YOU SHOULD THINK AGAIN'
+            'YOU SHOULD THINK AGAIN!'
         ];
 
         this.add.rectangle(GW/2, GH/2, GW, GH, 0x0a0a0a);
@@ -170,7 +170,7 @@ class IntroScene extends Phaser.Scene {
         const next = () => {
             if (i >= lines.length) { this.time.delayedCall(400, () => this.scene.start('GameScene')); return; }
             t.setText(lines[i++]);
-            this.time.delayedCall(2000, () => { t.setText(''); this.time.delayedCall(150, next); });
+            this.time.delayedCall(1500, () => { t.setText(''); this.time.delayedCall(150, next); });
         };
         next();
     }
@@ -429,7 +429,7 @@ class GameScene extends Phaser.Scene {
                 // Just fade in new key; no old key
                 it.nkbg.setAlpha(0).setVisible(true);
                 it.nktxt.setAlpha(0).setVisible(true);
-                this.tweens.add({ targets: [it.nkbg, it.nktxt], alpha: 1, duration: 500, delay: 100 });
+                this.tweens.add({ targets: [it.nkbg, it.nktxt], alpha: 1, duration: 1000, delay: 200 });
             } else {
                 // Show old fading out, new fading in
                 it.oktxt.setText((oldKey || '').toUpperCase());
@@ -438,12 +438,12 @@ class GameScene extends Phaser.Scene {
                 it.nkbg.setAlpha(0).setVisible(true);
                 it.nktxt.setAlpha(0).setVisible(true);
 
-                this.tweens.add({ targets: [it.okbg, it.oktxt], alpha: 0, duration: 400, delay: 300 });
-                this.tweens.add({ targets: [it.nkbg, it.nktxt], alpha: 1, duration: 400, delay: 500 });
+                this.tweens.add({ targets: [it.okbg, it.oktxt], alpha: 0, duration: 500, delay: 300 });
+                this.tweens.add({ targets: [it.nkbg, it.nktxt], alpha: 1, duration: 500, delay: 500 });
             }
         });
 
-        const holdMs = isFirst ? 1400 : 1800;
+        const holdMs = isFirst ? 2000 : 3000;
         this.time.delayedCall(holdMs, onDone);
     }
 
