@@ -1,21 +1,33 @@
 // Run Jump Duck
 
-const GW = 960;
-const GH = 550;
-const CMDS = ['run', 'jump', 'duck'];
+// ─── Animation Timings (ms) ───────────────────────────────────────────────────
+const ANIM_FIRST_FADE_DUR   = 500;   // Level 1: new key fade-in duration
+const ANIM_FIRST_FADE_DELAY = 200;   // Level 1: delay before fade-in starts
+const ANIM_FIRST_HOLD       = 3500;  // Level 1: hold time before game begins
+const ANIM_FADEOUT_DUR      = 1000;   // Other rounds: old key fade-out duration
+const ANIM_FADEOUT_DELAY    = 300;   // Other rounds: delay before old key fades out
+const ANIM_FADEIN_DUR       = 1000;   // Other rounds: new key fade-in duration
+const ANIM_FADEIN_DELAY     = 1300;   // Other rounds: delay before new key fades in
+const ANIM_HOLD             = 4000;  // Other rounds: hold time before game begins
+const ANIM_PASS_FLASH       = 500;   // Duration of green score flash on correct input
+
+// ─── Game Constants ───────────────────────────────────────────────────────────
+const GW         = 960;
+const GH         = 550;
+const CMDS       = ['run', 'jump', 'duck'];
 const CMD_LABELS = { run: 'RUN', jump: 'JUMP', duck: 'DUCK' };
 const CMD_COLORS = { run: 0x44cc44, jump: 0x4488ff, duck: 0xffcc00 };
-const KEYS_INIT = ['a', 's', 'd'];
-const KEYS_EXT  = ['f', 'j', 'k', 'l', ';'];
-const KEYS_FULL = [
+const KEYS_INIT  = ['a', 's', 'd', 'f'];
+const KEYS_EXT   = ['j', 'k', 'l', ';'];
+const KEYS_FULL  = [
     'q','w','e','r','t','y','u','i','o','p','[',']','\\',
-    'a','s','d','f','g','h','j','k','l',';',"'",
+    'a','s','d','f','g','h','j','k','l',';',
     'z','x','c','v','b','n','m',',','.','/'
 ];
 const ROUND_SIZE = 5;
 const INIT_MS    = 4000;
 
-// Frame layout helpers: [x, y, w, h]
+// ─── Frame Layout [x, y, w, h] ───────────────────────────────────────────────
 const FR = {
     inst:  [10,  10,  530, 90],
     timer: [550, 10,  140, 90],
@@ -27,20 +39,29 @@ const FR = {
 };
 function fc(f) { return { x: f[0], y: f[1], w: f[2], h: f[3], cx: f[0]+f[2]/2, cy: f[1]+f[3]/2 }; }
 
+// ─── Utility ──────────────────────────────────────────────────────────────────
+function border(gfx, f, color = 0xffffff, lw = 2) {
+    gfx.clear();
+    gfx.lineStyle(lw, color, 1);
+    gfx.strokeRect(f[0], f[1], f[2], f[3]);
+}
+
+function hexStr(n) { return '#' + n.toString(16).padStart(6, '0'); }
+
 // ─── Level Manager ────────────────────────────────────────────────────────────
 class LevelManager {
     constructor() {
-        this.level        = 1;
-        this.pool         = [...KEYS_INIT];
-        this.assignments  = {};   // { run, jump, duck } -> key string
-        this.prevAssign   = {};
-        this.changed      = [];   // which commands changed this round
-        this.showImg      = true;
-        this.showTxt      = true;
-        this.showCtrl     = true;
-        this.colorMech    = false;
-        this.timerMs      = INIT_MS;
-        this.extraCycles  = 0;
+        this.level       = 1;
+        this.pool        = [...KEYS_INIT];
+        this.assignments = {};
+        this.prevAssign  = {};
+        this.changed     = [];
+        this.showImg     = true;
+        this.showTxt     = true;
+        this.showCtrl    = true;
+        this.colorMech   = false;
+        this.timerMs     = INIT_MS;
+        this.extraCycles = 0;
     }
 
     apply() {
@@ -55,9 +76,9 @@ class LevelManager {
         else if (lvl === 8) { this.swapTwo(); this.reassignOne(); }
         else                { this.reassignOne(); }
 
-        this.showTxt  = lvl !== 9;
-        this.showImg  = lvl !== 10;
-        this.showCtrl = lvl < 11;
+        this.showTxt   = lvl !== 9;
+        this.showImg   = lvl !== 10;
+        this.showCtrl  = lvl < 11;
         this.colorMech = lvl >= 12;
     }
 
@@ -67,13 +88,12 @@ class LevelManager {
     }
 
     reassignOne() {
-        const cmd     = CMDS[Math.floor(Math.random() * 3)];
-        const others  = CMDS.filter(c => c !== cmd).map(c => this.assignments[c]);
-        const curKey  = this.assignments[cmd];
-        const pool    = this.pool.filter(k => !others.includes(k) && k !== curKey);
+        const cmd    = CMDS[Math.floor(Math.random() * 3)];
+        const others = CMDS.filter(c => c !== cmd).map(c => this.assignments[c]);
+        const curKey = this.assignments[cmd];
+        const pool   = this.pool.filter(k => !others.includes(k) && k !== curKey);
 
         if (pool.length === 0) {
-            // Fall back: swap with a random other command
             const other = CMDS.filter(c => c !== cmd)[Math.floor(Math.random() * 2)];
             [this.assignments[cmd], this.assignments[other]] = [this.assignments[other], this.assignments[cmd]];
             this.changed.push(cmd, other);
@@ -108,14 +128,34 @@ class LevelManager {
     }
 }
 
-// ─── Utility ──────────────────────────────────────────────────────────────────
-function border(gfx, f, color = 0xffffff, lw = 2) {
-    gfx.clear();
-    gfx.lineStyle(lw, color, 1);
-    gfx.strokeRect(f[0], f[1], f[2], f[3]);
+// ─── Music helper (starts once; survives scene switches via game.sound) ──────
+let musicStarted = false;
+function startMusic(scene) {
+    if (musicStarted) return;
+    musicStarted = true;
+    const mgr  = scene.game.sound;
+    const play = () => { try { mgr.add('music', { loop: true, volume: 0.5 }).play(); } catch (e) {} };
+    if (mgr.locked) { mgr.once('unlocked', play); } else { play(); }
 }
 
-function hexStr(n) { return '#' + n.toString(16).padStart(6, '0'); }
+// ─── Preload Scene ────────────────────────────────────────────────────────────
+class PreloadScene extends Phaser.Scene {
+    constructor() { super('PreloadScene'); }
+
+    preload() {
+        this.load.image('run',  'assets/run.png');
+        this.load.image('jump', 'assets/jump.png');
+        this.load.image('duck', 'assets/duck.png');
+        this.load.image('key',  'assets/key.png');
+        this.load.audio('music', ['assets/music.ogg', 'assets/music.mp3']);
+        this.load.audio('pass',  'assets/pass.wav');
+        this.load.audio('fail',  'assets/fail.wav');
+    }
+
+    create() {
+        this.scene.start('MenuScene');
+    }
+}
 
 // ─── Menu Scene ───────────────────────────────────────────────────────────────
 class MenuScene extends Phaser.Scene {
@@ -141,8 +181,15 @@ class MenuScene extends Phaser.Scene {
             fontSize: '28px', fill: '#ffff88', fontFamily: 'monospace'
         }).setOrigin(0.5);
 
-        this.input.keyboard.once('keydown-ONE', () => this.scene.start('IntroScene'));
-        this.input.keyboard.once('keydown-TWO', () => this.scene.start('CreditsScene'));
+        // Start music immediately; if AudioContext is locked, wait for first interaction
+        if (this.sound.locked) {
+            this.sound.once('unlocked', () => startMusic(this));
+        } else {
+            startMusic(this);
+        }
+
+        this.input.keyboard.once('keydown-ONE', () => { startMusic(this); this.scene.start('IntroScene'); });
+        this.input.keyboard.once('keydown-TWO', () => { startMusic(this); this.scene.start('CreditsScene'); });
     }
 }
 
@@ -153,8 +200,8 @@ class IntroScene extends Phaser.Scene {
     create() {
         const lines = [
             'THERE ARE ONLY THREE OPTIONS:',
-            'RUN, JUMP, DUCK.',
-            'COMPLETE EACH COMMAND.',
+            'RUN, JUMP, DUCK',
+            'COMPLETE EACH COMMAND BEFORE TIME RUNS OUT.',
             "YOU THINK YOU'RE SO SMART?",
             'YOU SHOULD THINK AGAIN!'
         ];
@@ -187,9 +234,13 @@ class CreditsScene extends Phaser.Scene {
             fontSize: '52px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
         }).setOrigin(0.5);
 
-        this.add.text(GW/2, 310, 'Nic, Claude', { fontSize: '34px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold' }).setOrigin(0.5);
+        this.add.text(GW/2, 310, 'Nic, Claude', {
+            fontSize: '34px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
+        }).setOrigin(0.5);
 
-        this.add.text(GW/2, 500, 'Press any key to return', { fontSize: '18px', fill: '#555555', fontFamily: 'monospace' }).setOrigin(0.5);
+        this.add.text(GW/2, 500, 'Press any key to return', {
+            fontSize: '18px', fill: '#555555', fontFamily: 'monospace'
+        }).setOrigin(0.5);
 
         this.input.keyboard.once('keydown', () => this.scene.start('MenuScene'));
     }
@@ -200,14 +251,15 @@ class GameScene extends Phaser.Scene {
     constructor() { super('GameScene'); }
 
     create() {
-        this.lm           = new LevelManager();
-        this.score        = 0;
-        this.cmdCount     = 0;
-        this.state        = 'idle';
-        this.curCmd       = null;
-        this.timerEv      = null;
-        this.timerLeft    = 0;
-        this.colData      = null;
+        this.lm         = new LevelManager();
+        this.score      = 0;
+        this.cmdCount   = 0;
+        this.state      = 'idle';
+        this.curCmd     = null;
+        this.timerEv    = null;
+        this.timerLeft  = 0;
+        this.colData    = null;
+        this.invincible = false;
 
         this.add.rectangle(GW/2, GH/2, GW, GH, 0x0a0a0a);
 
@@ -224,7 +276,6 @@ class GameScene extends Phaser.Scene {
     // ── Static UI ────────────────────────────────────────────────────────────
 
     _buildStaticUI() {
-        // Border graphics (one per frame so we can recolor individually)
         this.bInst  = this.add.graphics();
         this.bTimer = this.add.graphics();
         this.bImg   = this.add.graphics();
@@ -239,7 +290,7 @@ class GameScene extends Phaser.Scene {
         border(this.bScore, FR.score);
         border(this.bCtrl,  FR.ctrl);
 
-        // Instruction frame text (two lines for color mechanic)
+        // Instruction frame
         const if_ = fc(FR.inst);
         this.tInstMain = this.add.text(if_.cx, if_.cy - 14, 'INPUT THE COMMAND', {
             fontSize: '24px', fill: '#ffffff', fontFamily: 'monospace'
@@ -255,12 +306,11 @@ class GameScene extends Phaser.Scene {
         }).setOrigin(0.5);
         this.gTimerBar = this.add.graphics();
 
-        // Image frame placeholder
+        // Image frame — black fill + aspect-ratio-fitted sprite
         const imgf = fc(FR.img);
-        this.rImgPlaceholder = this.add.rectangle(imgf.cx, imgf.cy, FR.img[2]-40, FR.img[3]-40, 0x333333);
-        this.tImgCmd = this.add.text(imgf.cx, imgf.cy, '', {
-            fontSize: '56px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
-        }).setOrigin(0.5);
+        this.rImgBg = this.add.rectangle(imgf.cx, imgf.cy, FR.img[2] - 4, FR.img[3] - 4, 0x000000);
+        this.imgSprite = this.add.image(imgf.cx, imgf.cy, 'run');
+        this._fitSprite(this.imgSprite);
 
         // Text frame
         const txtf = fc(FR.txt);
@@ -268,31 +318,38 @@ class GameScene extends Phaser.Scene {
             fontSize: '72px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
         }).setOrigin(0.5);
 
-        // Score frame
+        // Score frame — background rect for flash, then label + number on top
         const sf = fc(FR.score);
-        this.add.text(sf.cx, sf.y + 22, 'SCORE', { fontSize: '18px', fill: '#888888', fontFamily: 'monospace' }).setOrigin(0.5);
+        this.rScoreBg = this.add.rectangle(sf.cx, sf.cy, FR.score[2] - 4, FR.score[3] - 4, 0x226622)
+            .setVisible(false);
+
+        // Invincibility indicator (top-right corner)
+        this.tInvincible = this.add.text(GW - 10, 10, '*** INVINCIBLE ***', {
+            fontSize: '14px', fill: '#ff44ff', fontFamily: 'monospace'
+        }).setOrigin(1, 0).setVisible(false);
+        this.add.text(sf.cx, sf.y + 22, 'SCORE', {
+            fontSize: '18px', fill: '#888888', fontFamily: 'monospace'
+        }).setOrigin(0.5);
         this.tScore = this.add.text(sf.cx, sf.y + 58, '0', {
             fontSize: '34px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
         }).setOrigin(0.5);
 
-        // Compact controls (sidebar)
+        // Compact controls (sidebar) — key image + text on top
         this.ctrlItems = {};
         CMDS.forEach((cmd, i) => {
             const rowY = FR.ctrl[1] + 50 + i * (FR.ctrl[3] / 3);
             const cx   = fc(FR.ctrl).cx;
 
-            const dot = this.add.rectangle(cx - 70, rowY, 32, 32, CMD_COLORS[cmd]);
-            const lbl = this.add.text(cx - 15, rowY, CMD_LABELS[cmd], {
+            const dot  = this.add.image(cx - 70, rowY, cmd).setDisplaySize(32, 32);
+            const lbl  = this.add.text(cx - 15, rowY, CMD_LABELS[cmd], {
                 fontSize: '20px', fill: '#cccccc', fontFamily: 'monospace'
             }).setOrigin(0, 0.5);
-
-            const kbg = this.add.rectangle(cx + 80, rowY, 48, 48, 0x2a2a2a);
-            kbg.setStrokeStyle(2, 0x888888);
+            const kimg = this.add.image(cx + 80, rowY, 'key').setDisplaySize(48, 48);
             const ktxt = this.add.text(cx + 80, rowY, '', {
-                fontSize: '22px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
+                fontSize: '20px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
             }).setOrigin(0.5);
 
-            this.ctrlItems[cmd] = { dot, lbl, kbg, ktxt };
+            this.ctrlItems[cmd] = { dot, lbl, kimg, ktxt };
         });
     }
 
@@ -303,8 +360,7 @@ class GameScene extends Phaser.Scene {
 
         this.expBg     = this.add.rectangle(ef.cx, ef.cy, FR.exp[2], FR.exp[3], 0x111118).setVisible(false);
         this.expBorder = this.add.graphics();
-
-        this.expLevel = this.add.text(ef.cx, FR.exp[1] + 36, '', {
+        this.expLevel  = this.add.text(ef.cx, FR.exp[1] + 36, '', {
             fontSize: '22px', fill: '#888888', fontFamily: 'monospace'
         }).setOrigin(0.5).setVisible(false);
 
@@ -312,31 +368,28 @@ class GameScene extends Phaser.Scene {
         const rowH = (FR.exp[3] - 80) / 3;
 
         CMDS.forEach((cmd, i) => {
-            const ry  = FR.exp[1] + 80 + i * rowH + rowH / 2;
-            const lx  = FR.exp[0] + 80;
-            const kx  = FR.exp[0] + FR.exp[2] - 130;
+            const ry = FR.exp[1] + 80 + i * rowH + rowH / 2;
+            const lx = FR.exp[0] + 80;
+            const kx = FR.exp[0] + FR.exp[2] - 130;
 
-            // Command indicator
-            const dot = this.add.rectangle(lx, ry, 44, 44, CMD_COLORS[cmd]).setVisible(false);
-            const lbl = this.add.text(lx + 60, ry, CMD_LABELS[cmd], {
+            const dot  = this.add.image(lx, ry, cmd).setDisplaySize(44, 44).setVisible(false);
+            const lbl  = this.add.text(lx + 60, ry, CMD_LABELS[cmd], {
                 fontSize: '38px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
             }).setOrigin(0, 0.5).setVisible(false);
 
             // Old key (fades out)
-            const okbg  = this.add.rectangle(kx, ry, 80, 80, 0x333333).setVisible(false);
-            okbg.setStrokeStyle(3, 0x666666);
+            const okimg = this.add.image(kx, ry, 'key').setDisplaySize(80, 80).setVisible(false);
             const oktxt = this.add.text(kx, ry, '', {
-                fontSize: '42px', fill: '#999999', fontFamily: 'monospace', fontStyle: 'bold'
+                fontSize: '38px', fill: '#999999', fontFamily: 'monospace', fontStyle: 'bold'
             }).setOrigin(0.5).setVisible(false);
 
             // New key (fades in)
-            const nkbg  = this.add.rectangle(kx, ry, 80, 80, 0x1a331a).setVisible(false);
-            nkbg.setStrokeStyle(3, 0x44ff44);
+            const nkimg = this.add.image(kx, ry, 'key').setDisplaySize(80, 80).setVisible(false);
             const nktxt = this.add.text(kx, ry, '', {
-                fontSize: '42px', fill: '#44ff44', fontFamily: 'monospace', fontStyle: 'bold'
+                fontSize: '38px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
             }).setOrigin(0.5).setVisible(false);
 
-            this.expItems[cmd] = { dot, lbl, okbg, oktxt, nkbg, nktxt };
+            this.expItems[cmd] = { dot, lbl, okimg, oktxt, nkimg, nktxt };
         });
     }
 
@@ -355,12 +408,11 @@ class GameScene extends Phaser.Scene {
     }
 
     _hideMainFrames() {
-        const all = [
+        [
             this.bInst, this.bTimer, this.bImg, this.bTxt, this.bCtrl,
             this.tInstMain, this.tInstSub, this.tTimerNum, this.gTimerBar,
-            this.rImgPlaceholder, this.tImgCmd, this.tCmdText,
-        ];
-        all.forEach(o => o.setVisible(false));
+            this.rImgBg, this.imgSprite, this.tCmdText,
+        ].forEach(o => o.setVisible(false));
         CMDS.forEach(c => Object.values(this.ctrlItems[c]).forEach(o => o.setVisible(false)));
     }
 
@@ -371,16 +423,13 @@ class GameScene extends Phaser.Scene {
         border(this.bTimer, FR.timer);
         border(this.bScore, FR.score);
 
-        this.bInst.setVisible(true);
-        this.bTimer.setVisible(true);
-        this.tInstMain.setVisible(true);
-        this.tTimerNum.setVisible(true);
+        [this.bInst, this.bTimer, this.tInstMain, this.tTimerNum].forEach(o => o.setVisible(true));
 
         if (lm.showImg) {
             border(this.bImg, FR.img);
             this.bImg.setVisible(true);
-            this.rImgPlaceholder.setVisible(true);
-            this.tImgCmd.setVisible(true);
+            this.rImgBg.setVisible(true);
+            this.imgSprite.setVisible(true);
         }
         if (lm.showTxt) {
             border(this.bTxt, FR.txt);
@@ -407,11 +456,9 @@ class GameScene extends Phaser.Scene {
     _showExpandedPanel(onDone) {
         const lm      = this.lm;
         const isFirst = lm.level === 1 && lm.extraCycles === 0;
-        const ef      = fc(FR.exp);
 
         this.expBg.setVisible(true);
         border(this.expBorder, FR.exp, 0xffffff, 2);
-
         this.expLevel.setText(`LEVEL  ${lm.level}`).setVisible(true);
 
         CMDS.forEach(cmd => {
@@ -422,29 +469,34 @@ class GameScene extends Phaser.Scene {
 
             it.dot.setVisible(true);
             it.lbl.setVisible(true);
-
             it.nktxt.setText((newKey || '').toUpperCase());
 
             if (isFirst || !changed) {
-                // Just fade in new key; no old key
-                it.nkbg.setAlpha(0).setVisible(true);
+                it.nkimg.setAlpha(0).setVisible(true);
                 it.nktxt.setAlpha(0).setVisible(true);
-                this.tweens.add({ targets: [it.nkbg, it.nktxt], alpha: 1, duration: 1000, delay: 200 });
+                this.tweens.add({
+                    targets: [it.nkimg, it.nktxt],
+                    alpha: 1, duration: ANIM_FIRST_FADE_DUR, delay: ANIM_FIRST_FADE_DELAY
+                });
             } else {
-                // Show old fading out, new fading in
                 it.oktxt.setText((oldKey || '').toUpperCase());
-                it.okbg.setAlpha(1).setVisible(true);
+                it.okimg.setAlpha(1).setVisible(true);
                 it.oktxt.setAlpha(1).setVisible(true);
-                it.nkbg.setAlpha(0).setVisible(true);
+                it.nkimg.setAlpha(0).setVisible(true);
                 it.nktxt.setAlpha(0).setVisible(true);
 
-                this.tweens.add({ targets: [it.okbg, it.oktxt], alpha: 0, duration: 500, delay: 300 });
-                this.tweens.add({ targets: [it.nkbg, it.nktxt], alpha: 1, duration: 500, delay: 500 });
+                this.tweens.add({
+                    targets: [it.okimg, it.oktxt],
+                    alpha: 0, duration: ANIM_FADEOUT_DUR, delay: ANIM_FADEOUT_DELAY
+                });
+                this.tweens.add({
+                    targets: [it.nkimg, it.nktxt],
+                    alpha: 1, duration: ANIM_FADEIN_DUR, delay: ANIM_FADEIN_DELAY
+                });
             }
         });
 
-        const holdMs = isFirst ? 2000 : 3000;
-        this.time.delayedCall(holdMs, onDone);
+        this.time.delayedCall(isFirst ? ANIM_FIRST_HOLD : ANIM_HOLD, onDone);
     }
 
     _hideExpandedPanel() {
@@ -453,11 +505,19 @@ class GameScene extends Phaser.Scene {
         this.expLevel.setVisible(false);
         CMDS.forEach(cmd => {
             const it = this.expItems[cmd];
-            [it.dot, it.lbl, it.okbg, it.oktxt, it.nkbg, it.nktxt].forEach(o => o.setVisible(false));
+            [it.dot, it.lbl, it.okimg, it.oktxt, it.nkimg, it.nktxt].forEach(o => o.setVisible(false));
         });
     }
 
     // ── Command Loop ─────────────────────────────────────────────────────────
+
+    _fitSprite(sprite) {
+        const fw  = FR.img[2] - 20;
+        const fh  = FR.img[3] - 20;
+        const src = this.textures.get(sprite.texture.key).getSourceImage();
+        const scale = Math.min(fw / src.width, fh / src.height);
+        sprite.setDisplaySize(src.width * scale, src.height * scale);
+    }
 
     _nextCommand() {
         if (this.cmdCount >= ROUND_SIZE) {
@@ -466,34 +526,56 @@ class GameScene extends Phaser.Scene {
             return;
         }
 
+        // Restore visibility after pass flash
+        if (this.lm.showImg) this.imgSprite.setVisible(true);
+        if (this.lm.showTxt) this.tCmdText.setVisible(true);
+        this.tInstMain.setVisible(true);
+        this.tTimerNum.setVisible(true);
+
         this.state  = 'command';
         this.curCmd = CMDS[Math.floor(Math.random() * 3)];
 
-        // Update instruction frame
         if (this.lm.colorMech) {
             this.colData = this.lm.colorData();
             const { word, wordClr, txtBorder, imgBorder } = this.colData;
-            this.tInstMain.setText('INPUT THE COMMAND IN').setVisible(true);
+            this.tInstMain.setText('INPUT THE COMMAND IN');
             this.tInstSub.setText(word).setStyle({ color: hexStr(wordClr), fontSize: '22px' }).setVisible(true);
             if (this.lm.showImg) border(this.bImg, FR.img, imgBorder, 3);
             if (this.lm.showTxt) border(this.bTxt, FR.txt, txtBorder, 3);
         } else {
-            this.tInstMain.setText('INPUT THE COMMAND').setVisible(true);
+            this.tInstMain.setText('INPUT THE COMMAND');
             this.tInstSub.setVisible(false);
             if (this.lm.showImg) border(this.bImg, FR.img, 0xffffff, 2);
             if (this.lm.showTxt) border(this.bTxt, FR.txt, 0xffffff, 2);
         }
 
-        // Update command display
-        if (this.lm.showImg) {
-            this.rImgPlaceholder.setFillStyle(CMD_COLORS[this.curCmd]);
-            this.tImgCmd.setText(CMD_LABELS[this.curCmd]);
-        }
-        if (this.lm.showTxt) {
-            this.tCmdText.setText(CMD_LABELS[this.curCmd]);
-        }
+        if (this.lm.showImg) { this.imgSprite.setTexture(this.curCmd); this._fitSprite(this.imgSprite); }
+        if (this.lm.showTxt) this.tCmdText.setText(CMD_LABELS[this.curCmd]);
 
         this._startTimer(this.lm.timerMs);
+    }
+
+    // ── Pass Flash ───────────────────────────────────────────────────────────
+
+    _showPassFlash(cb) {
+        // Hide command content
+        this.rImgBg.setVisible(false);
+        this.imgSprite.setVisible(false);
+        this.tCmdText.setVisible(false);
+        this.tInstMain.setVisible(false);
+        this.tInstSub.setVisible(false);
+        this.tTimerNum.setVisible(false);
+        this.gTimerBar.clear();
+
+        // Flash score frame green
+        this.rScoreBg.setVisible(true);
+        border(this.bScore, FR.score, 0x44ff44, 3);
+
+        this.time.delayedCall(ANIM_PASS_FLASH, () => {
+            this.rScoreBg.setVisible(false);
+            border(this.bScore, FR.score, 0xffffff, 2);
+            cb();
+        });
     }
 
     // ── Timer ────────────────────────────────────────────────────────────────
@@ -525,7 +607,7 @@ class GameScene extends Phaser.Scene {
                 this.gTimerBar.lineStyle(1, 0x444444);
                 this.gTimerBar.strokeRect(barX, barY, FR.timer[2] - 20, 10);
 
-                if (this.timerLeft <= 0) this._gameOver();
+                if (this.timerLeft <= 0 && !this.invincible) this._gameOver();
             }
         });
     }
@@ -533,6 +615,15 @@ class GameScene extends Phaser.Scene {
     // ── Input ────────────────────────────────────────────────────────────────
 
     _onKey(event) {
+        event.preventDefault();
+
+        // Toggle invulnerability at any time
+        if (event.key === '*') {
+            this.invincible = !this.invincible;
+            this.tInvincible.setVisible(this.invincible);
+            return;
+        }
+
         if (this.state !== 'command') return;
         const key     = event.key;
         const correct = this.lm.assignments[this.curCmd];
@@ -542,10 +633,13 @@ class GameScene extends Phaser.Scene {
             this.tScore.setText(String(this.score));
             this.cmdCount++;
             if (this.timerEv) { this.timerEv.remove(false); this.timerEv = null; }
-            this.gTimerBar.clear();
-            this.state = 'idle';
-            this._nextCommand();
-        } else {
+            this.state = 'pass';
+            this.sound.play('pass');
+            this._showPassFlash(() => {
+                this.state = 'idle';
+                this._nextCommand();
+            });
+        } else if (!this.invincible) {
             this._gameOver();
         }
     }
@@ -557,10 +651,12 @@ class GameScene extends Phaser.Scene {
         this.state = 'gameover';
         if (this.timerEv) { this.timerEv.remove(false); this.timerEv = null; }
 
+        this.sound.play('fail');
+
         const prev = parseInt(localStorage.getItem('rjd_hs') || '0');
         if (this.score > prev) localStorage.setItem('rjd_hs', String(this.score));
 
-        this.time.delayedCall(300, () => this.scene.start('MenuScene'));
+        this.time.delayedCall(800, () => this.scene.start('MenuScene'));
     }
 }
 
@@ -570,9 +666,10 @@ new Phaser.Game({
     width:           GW,
     height:          GH,
     backgroundColor: '#0a0a0a',
+    pauseOnBlur:     false,
     scale: {
         mode:       Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
     },
-    scene: [MenuScene, IntroScene, GameScene, CreditsScene],
+    scene: [PreloadScene, MenuScene, IntroScene, GameScene, CreditsScene],
 });
