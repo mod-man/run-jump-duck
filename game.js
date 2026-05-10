@@ -1,31 +1,55 @@
 // Run Jump Duck
 
 // ─── Animation Timings (ms) ───────────────────────────────────────────────────
-const ANIM_FIRST_FADE_DUR   = 500;   // Level 1: new key fade-in duration
-const ANIM_FIRST_FADE_DELAY = 200;   // Level 1: delay before fade-in starts
-const ANIM_FIRST_HOLD       = 3500;  // Level 1: hold time before game begins
-const ANIM_FADEOUT_DUR      = 1000;   // Other rounds: old key fade-out duration
-const ANIM_FADEOUT_DELAY    = 300;   // Other rounds: delay before old key fades out
-const ANIM_FADEIN_DUR       = 1000;   // Other rounds: new key fade-in duration
-const ANIM_FADEIN_DELAY     = 1300;   // Other rounds: delay before new key fades in
-const ANIM_HOLD             = 4000;  // Other rounds: hold time before game begins
-const ANIM_PASS_FLASH       = 500;   // Duration of green score flash on correct input
+const ANIM_FIRST_FADE_DUR   = 500;
+const ANIM_FIRST_FADE_DELAY = 200;
+const ANIM_FIRST_HOLD       = 3500;
+const ANIM_FADEOUT_DUR      = 1000;
+const ANIM_FADEOUT_DELAY    = 300;
+const ANIM_FADEIN_DUR       = 1000;
+const ANIM_FADEIN_DELAY     = 1300;
+const ANIM_HOLD             = 4000;
+const ANIM_PASS_FLASH       = 500;
 
 // ─── Game Constants ───────────────────────────────────────────────────────────
 const GW         = 960;
 const GH         = 550;
 const CMDS       = ['run', 'jump', 'duck'];
 const CMD_LABELS = { run: 'RUN', jump: 'JUMP', duck: 'DUCK' };
-const CMD_COLORS = { run: 0x44cc44, jump: 0x4488ff, duck: 0xffcc00 };
-const KEYS_INIT  = ['a', 's', 'd', 'f'];
-const KEYS_EXT   = ['j', 'k', 'l', ';'];
-const KEYS_FULL  = [
+const INIT_MS    = 4000;
+
+const KEYS_INIT = ['a', 's', 'd', 'f'];
+const KEYS_EXT  = ['j', 'k', 'l', ';'];
+const KEYS_MID  = [...KEYS_INIT, ...KEYS_EXT];
+const KEYS_FULL = [
     'q','w','e','r','t','y','u','i','o','p','[',']','\\',
     'a','s','d','f','g','h','j','k','l',';',
     'z','x','c','v','b','n','m',',','.','/'
 ];
-const ROUND_SIZE = 5;
-const INIT_MS    = 4000;
+
+// ─── Level Definitions ────────────────────────────────────────────────────────
+// pool:       keys available for assignment
+// keyChange:  'assignAll' | 'reassignOne' | 'swapReassign'
+// showImg:    show the command image pane
+// showTxt:    show the command word pane
+// showCtrl:   show the sidebar key-reference pane
+// colorMech:  enable colour-mismatch mechanic (image ≠ text, follow the coloured border)
+// timerMs:    base countdown time; multiplied by 0.9^extraCycles after the last level
+// roundSize:  commands to complete before advancing
+const LEVELS = [
+    { pool: KEYS_INIT, keyChange: 'assignAll',    showImg: true,  showTxt: true,  showCtrl: true,  colorMech: false, timerMs: INIT_MS, roundSize: 5 },
+    { pool: KEYS_INIT, keyChange: 'reassignOne',  showImg: true,  showTxt: true,  showCtrl: true,  colorMech: false, timerMs: INIT_MS, roundSize: 5 },
+    { pool: KEYS_MID,  keyChange: 'reassignOne',  showImg: true,  showTxt: true,  showCtrl: true,  colorMech: false, timerMs: INIT_MS, roundSize: 5 },
+    { pool: KEYS_MID,  keyChange: 'reassignOne',  showImg: true,  showTxt: true,  showCtrl: true,  colorMech: false, timerMs: INIT_MS, roundSize: 5 },
+    { pool: KEYS_FULL, keyChange: 'reassignOne',  showImg: true,  showTxt: true,  showCtrl: true,  colorMech: false, timerMs: INIT_MS, roundSize: 5 },
+    { pool: KEYS_FULL, keyChange: 'reassignOne',  showImg: true,  showTxt: true,  showCtrl: true,  colorMech: false, timerMs: INIT_MS, roundSize: 5 },
+    { pool: KEYS_FULL, keyChange: 'reassignOne',  showImg: true,  showTxt: true,  showCtrl: true,  colorMech: false, timerMs: INIT_MS, roundSize: 5 },
+    { pool: KEYS_FULL, keyChange: 'swapReassign', showImg: true,  showTxt: true,  showCtrl: true,  colorMech: false, timerMs: INIT_MS, roundSize: 5 },
+    { pool: KEYS_FULL, keyChange: 'reassignOne',  showImg: true,  showTxt: false, showCtrl: true,  colorMech: false, timerMs: INIT_MS, roundSize: 5 },
+    { pool: KEYS_FULL, keyChange: 'reassignOne',  showImg: false, showTxt: true,  showCtrl: true,  colorMech: false, timerMs: INIT_MS, roundSize: 5 },
+    { pool: KEYS_FULL, keyChange: 'reassignOne',  showImg: true,  showTxt: true,  showCtrl: false, colorMech: false, timerMs: INIT_MS, roundSize: 5 },
+    { pool: KEYS_FULL, keyChange: 'reassignOne',  showImg: true,  showTxt: true,  showCtrl: false, colorMech: true,  timerMs: INIT_MS, roundSize: 5 },
+];
 
 // ─── Frame Layout [x, y, w, h] ───────────────────────────────────────────────
 const FR = {
@@ -51,35 +75,33 @@ function hexStr(n) { return '#' + n.toString(16).padStart(6, '0'); }
 // ─── Level Manager ────────────────────────────────────────────────────────────
 class LevelManager {
     constructor() {
-        this.level       = 1;
-        this.pool        = [...KEYS_INIT];
-        this.assignments = {};
-        this.prevAssign  = {};
-        this.changed     = [];
-        this.showImg     = true;
-        this.showTxt     = true;
-        this.showCtrl    = true;
-        this.colorMech   = false;
-        this.timerMs     = INIT_MS;
-        this.extraCycles = 0;
+        this.levelIdx        = 0;   // index into LEVELS; caps at LEVELS.length - 1
+        this.round           = 1;   // monotonically increasing (for display)
+        this.extraCycles     = 0;   // rounds beyond the last level definition
+        this.assignments     = {};
+        this.prevAssign      = {};
+        this.changed         = [];
+        this.lastChangedCmds = [];  // commands changed last round (prevents back-to-back repeat)
     }
 
+    get cfg()       { return LEVELS[this.levelIdx]; }
+    get pool()      { return this.cfg.pool; }
+    get showImg()   { return this.cfg.showImg; }
+    get showTxt()   { return this.cfg.showTxt; }
+    get showCtrl()  { return this.cfg.showCtrl; }
+    get colorMech() { return this.cfg.colorMech; }
+    get roundSize() { return this.cfg.roundSize; }
+    get timerMs()   { return this.cfg.timerMs * Math.pow(0.9, this.extraCycles); }
+
     apply() {
-        this.prevAssign = { ...this.assignments };
-        this.changed    = [];
-        const lvl = this.level;
+        this.prevAssign      = { ...this.assignments };
+        this.lastChangedCmds = [...this.changed];
+        this.changed         = [];
+        const mode           = this.cfg.keyChange;
 
-        if (lvl === 3) this.pool = [...KEYS_INIT, ...KEYS_EXT];
-        if (lvl === 5) this.pool = [...KEYS_FULL];
-
-        if      (lvl === 1) { this.assignAll(); }
-        else if (lvl === 8) { this.swapTwo(); this.reassignOne(); }
-        else                { this.reassignOne(); }
-
-        this.showTxt   = lvl !== 9;
-        this.showImg   = lvl !== 10;
-        this.showCtrl  = lvl < 11;
-        this.colorMech = lvl >= 12;
+        if      (mode === 'assignAll')    { this.assignAll(); }
+        else if (mode === 'swapReassign') { this.swapTwo(); this.reassignOne(); }
+        else                              { this.reassignOne(); }
     }
 
     assignAll() {
@@ -88,9 +110,14 @@ class LevelManager {
     }
 
     reassignOne() {
-        const cmd    = CMDS[Math.floor(Math.random() * 3)];
+        // Avoid reassigning the same command changed last round
+        const eligible = CMDS.filter(c => !this.lastChangedCmds.includes(c));
+        const cmdPool  = eligible.length > 0 ? eligible : CMDS;
+        const cmd      = cmdPool[Math.floor(Math.random() * cmdPool.length)];
+
         const others = CMDS.filter(c => c !== cmd).map(c => this.assignments[c]);
         const curKey = this.assignments[cmd];
+        // New key must not be any currently-assigned key
         const pool   = this.pool.filter(k => !others.includes(k) && k !== curKey);
 
         if (pool.length === 0) {
@@ -110,25 +137,34 @@ class LevelManager {
     }
 
     advance() {
-        if (this.level < 12) {
-            this.level++;
+        this.round++;
+        if (this.levelIdx < LEVELS.length - 1) {
+            this.levelIdx++;
         } else {
             this.extraCycles++;
-            this.timerMs = INIT_MS * Math.pow(0.9, this.extraCycles);
         }
         this.apply();
     }
 
+    // Returns data for the colour-mismatch mechanic.
+    // correctPanel: which pane ('img' or 'txt') has a border colour matching the instruction word.
+    // Player must press the key for the command shown in the correctPanel.
     colorData() {
-        const word      = Math.random() < 0.5 ? 'RED' : 'GREEN';
-        const wordClr   = Math.random() < 0.5 ? 0xff3333 : 0x33cc33;
-        const txtBorder = Math.random() < 0.5 ? 0xff3333 : 0x33cc33;
-        const imgBorder = txtBorder === 0xff3333 ? 0x33cc33 : 0xff3333;
-        return { word, wordClr, txtBorder, imgBorder };
+        const word         = Math.random() < 0.5 ? 'GREEN' : 'RED';
+        const correctPanel = Math.random() < 0.5 ? 'txt' : 'img';
+        const green        = 0x33cc33;
+        const red          = 0xff3333;
+        // Word colour is a random red herring — it does NOT indicate the correct panel
+        const wordClr      = Math.random() < 0.5 ? green : red;
+        const correctClr   = word === 'GREEN' ? green : red;
+        const decoyClr     = word === 'GREEN' ? red   : green;
+        const txtBorder    = correctPanel === 'txt' ? correctClr : decoyClr;
+        const imgBorder    = correctPanel === 'img' ? correctClr : decoyClr;
+        return { word, wordClr, txtBorder, imgBorder, correctPanel };
     }
 }
 
-// ─── Music helper (starts once; survives scene switches via game.sound) ──────
+// ─── Music helper ─────────────────────────────────────────────────────────────
 let musicStarted = false;
 function startMusic(scene) {
     if (musicStarted) return;
@@ -152,9 +188,7 @@ class PreloadScene extends Phaser.Scene {
         this.load.audio('fail',  'assets/fail.wav');
     }
 
-    create() {
-        this.scene.start('MenuScene');
-    }
+    create() { this.scene.start('MenuScene'); }
 }
 
 // ─── Menu Scene ───────────────────────────────────────────────────────────────
@@ -181,7 +215,6 @@ class MenuScene extends Phaser.Scene {
             fontSize: '28px', fill: '#ffff88', fontFamily: 'monospace'
         }).setOrigin(0.5);
 
-        // Start music immediately; if AudioContext is locked, wait for first interaction
         if (this.sound.locked) {
             this.sound.once('unlocked', () => startMusic(this));
         } else {
@@ -256,10 +289,12 @@ class GameScene extends Phaser.Scene {
         this.cmdCount   = 0;
         this.state      = 'idle';
         this.curCmd     = null;
+        this.colData    = null;
         this.timerEv    = null;
         this.timerLeft  = 0;
-        this.colData    = null;
-        this.invincible = false;
+        this.invincible     = false;
+        this.invincibleUsed = false;  // true once invincible is toggled on at any point
+        this.capsLockOn     = false;
 
         this.add.rectangle(GW/2, GH/2, GW, GH, 0x0a0a0a);
 
@@ -318,15 +353,16 @@ class GameScene extends Phaser.Scene {
             fontSize: '72px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
         }).setOrigin(0.5);
 
-        // Score frame — background rect for flash, then label + number on top
+        // Score frame
         const sf = fc(FR.score);
         this.rScoreBg = this.add.rectangle(sf.cx, sf.cy, FR.score[2] - 4, FR.score[3] - 4, 0x226622)
             .setVisible(false);
 
-        // Invincibility indicator (top-right corner)
+        // Invincibility indicator
         this.tInvincible = this.add.text(GW - 10, 10, '*** INVINCIBLE ***', {
             fontSize: '14px', fill: '#ff44ff', fontFamily: 'monospace'
         }).setOrigin(1, 0).setVisible(false);
+
         this.add.text(sf.cx, sf.y + 22, 'SCORE', {
             fontSize: '18px', fill: '#888888', fontFamily: 'monospace'
         }).setOrigin(0.5);
@@ -334,7 +370,13 @@ class GameScene extends Phaser.Scene {
             fontSize: '34px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
         }).setOrigin(0.5);
 
-        // Compact controls (sidebar) — key image + text on top
+        // Caps lock warning — bottom centre
+        this.tCapsWarning = this.add.text(GW / 2, GH - 4, '! CAPS LOCK IS ON !', {
+            fontSize: '14px', fill: '#ff8800', fontFamily: 'monospace'
+        }).setOrigin(0.5, 1).setVisible(false);
+
+        // Compact controls (sidebar) — key image with letter on top
+        // The letter text is offset upward so it visually sits on the key face
         this.ctrlItems = {};
         CMDS.forEach((cmd, i) => {
             const rowY = FR.ctrl[1] + 50 + i * (FR.ctrl[3] / 3);
@@ -345,7 +387,7 @@ class GameScene extends Phaser.Scene {
                 fontSize: '20px', fill: '#cccccc', fontFamily: 'monospace'
             }).setOrigin(0, 0.5);
             const kimg = this.add.image(cx + 80, rowY, 'key').setDisplaySize(48, 48);
-            const ktxt = this.add.text(cx + 80, rowY, '', {
+            const ktxt = this.add.text(cx + 80, rowY - 5, '', {
                 fontSize: '20px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
             }).setOrigin(0.5);
 
@@ -379,13 +421,13 @@ class GameScene extends Phaser.Scene {
 
             // Old key (fades out)
             const okimg = this.add.image(kx, ry, 'key').setDisplaySize(80, 80).setVisible(false);
-            const oktxt = this.add.text(kx, ry, '', {
+            const oktxt = this.add.text(kx, ry - 8, '', {
                 fontSize: '38px', fill: '#999999', fontFamily: 'monospace', fontStyle: 'bold'
             }).setOrigin(0.5).setVisible(false);
 
             // New key (fades in)
             const nkimg = this.add.image(kx, ry, 'key').setDisplaySize(80, 80).setVisible(false);
-            const nktxt = this.add.text(kx, ry, '', {
+            const nktxt = this.add.text(kx, ry - 8, '', {
                 fontSize: '38px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
             }).setOrigin(0.5).setVisible(false);
 
@@ -455,11 +497,11 @@ class GameScene extends Phaser.Scene {
 
     _showExpandedPanel(onDone) {
         const lm      = this.lm;
-        const isFirst = lm.level === 1 && lm.extraCycles === 0;
+        const isFirst = lm.round === 1;
 
         this.expBg.setVisible(true);
         border(this.expBorder, FR.exp, 0xffffff, 2);
-        this.expLevel.setText(`LEVEL  ${lm.level}`).setVisible(true);
+        this.expLevel.setText(`ROUND  ${lm.round}`).setVisible(true);
 
         CMDS.forEach(cmd => {
             const it      = this.expItems[cmd];
@@ -520,14 +562,17 @@ class GameScene extends Phaser.Scene {
     }
 
     _nextCommand() {
-        if (this.cmdCount >= ROUND_SIZE) {
+        if (this.cmdCount >= this.lm.roundSize) {
             this.lm.advance();
             this._startRound();
             return;
         }
 
         // Restore visibility after pass flash
-        if (this.lm.showImg) this.imgSprite.setVisible(true);
+        if (this.lm.showImg) {
+            this.rImgBg.setVisible(true);
+            this.imgSprite.setVisible(true);
+        }
         if (this.lm.showTxt) this.tCmdText.setVisible(true);
         this.tInstMain.setVisible(true);
         this.tTimerNum.setVisible(true);
@@ -537,20 +582,40 @@ class GameScene extends Phaser.Scene {
 
         if (this.lm.colorMech) {
             this.colData = this.lm.colorData();
-            const { word, wordClr, txtBorder, imgBorder } = this.colData;
+            const { word, wordClr, txtBorder, imgBorder, correctPanel } = this.colData;
+
             this.tInstMain.setText('INPUT THE COMMAND IN');
             this.tInstSub.setText(word).setStyle({ color: hexStr(wordClr), fontSize: '22px' }).setVisible(true);
-            if (this.lm.showImg) border(this.bImg, FR.img, imgBorder, 3);
-            if (this.lm.showTxt) border(this.bTxt, FR.txt, txtBorder, 3);
+
+            // Decoy: a different command shown in the non-correct pane
+            const others   = CMDS.filter(c => c !== this.curCmd);
+            const decoyCmd = others[Math.floor(Math.random() * others.length)];
+
+            if (this.lm.showImg) {
+                const imgCmd = correctPanel === 'img' ? this.curCmd : decoyCmd;
+                this.imgSprite.setTexture(imgCmd);
+                this._fitSprite(this.imgSprite);
+                border(this.bImg, FR.img, imgBorder, 3);
+            }
+            if (this.lm.showTxt) {
+                const txtCmd = correctPanel === 'txt' ? this.curCmd : decoyCmd;
+                this.tCmdText.setText(CMD_LABELS[txtCmd]);
+                border(this.bTxt, FR.txt, txtBorder, 3);
+            }
         } else {
+            this.colData = null;
             this.tInstMain.setText('INPUT THE COMMAND');
             this.tInstSub.setVisible(false);
-            if (this.lm.showImg) border(this.bImg, FR.img, 0xffffff, 2);
-            if (this.lm.showTxt) border(this.bTxt, FR.txt, 0xffffff, 2);
+            if (this.lm.showImg) {
+                this.imgSprite.setTexture(this.curCmd);
+                this._fitSprite(this.imgSprite);
+                border(this.bImg, FR.img, 0xffffff, 2);
+            }
+            if (this.lm.showTxt) {
+                this.tCmdText.setText(CMD_LABELS[this.curCmd]);
+                border(this.bTxt, FR.txt, 0xffffff, 2);
+            }
         }
-
-        if (this.lm.showImg) { this.imgSprite.setTexture(this.curCmd); this._fitSprite(this.imgSprite); }
-        if (this.lm.showTxt) this.tCmdText.setText(CMD_LABELS[this.curCmd]);
 
         this._startTimer(this.lm.timerMs);
     }
@@ -558,7 +623,6 @@ class GameScene extends Phaser.Scene {
     // ── Pass Flash ───────────────────────────────────────────────────────────
 
     _showPassFlash(cb) {
-        // Hide command content
         this.rImgBg.setVisible(false);
         this.imgSprite.setVisible(false);
         this.tCmdText.setVisible(false);
@@ -567,7 +631,6 @@ class GameScene extends Phaser.Scene {
         this.tTimerNum.setVisible(false);
         this.gTimerBar.clear();
 
-        // Flash score frame green
         this.rScoreBg.setVisible(true);
         border(this.bScore, FR.score, 0x44ff44, 3);
 
@@ -617,9 +680,17 @@ class GameScene extends Phaser.Scene {
     _onKey(event) {
         event.preventDefault();
 
-        // Toggle invulnerability at any time
+        // Caps lock detection — warn the player but remain case-sensitive
+        const capsLock = event.getModifierState ? event.getModifierState('CapsLock') : false;
+        if (this.capsLockOn !== capsLock) {
+            this.capsLockOn = capsLock;
+            this.tCapsWarning.setVisible(capsLock);
+        }
+
+        // Toggle invincibility
         if (event.key === '*') {
             this.invincible = !this.invincible;
+            if (this.invincible) this.invincibleUsed = true;
             this.tInvincible.setVisible(this.invincible);
             return;
         }
@@ -653,8 +724,11 @@ class GameScene extends Phaser.Scene {
 
         this.sound.play('fail');
 
-        const prev = parseInt(localStorage.getItem('rjd_hs') || '0');
-        if (this.score > prev) localStorage.setItem('rjd_hs', String(this.score));
+        // High score is not updated if invincible was ever activated this session
+        if (!this.invincibleUsed) {
+            const prev = parseInt(localStorage.getItem('rjd_hs') || '0');
+            if (this.score > prev) localStorage.setItem('rjd_hs', String(this.score));
+        }
 
         this.time.delayedCall(800, () => this.scene.start('MenuScene'));
     }
